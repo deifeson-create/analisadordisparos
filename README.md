@@ -1,0 +1,2 @@
+# analisadordisparos
+analisa disparos
