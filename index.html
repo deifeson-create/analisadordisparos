@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="pt-br" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disparosnator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827; /* gray-900 */
+            color: #d1d5db; /* gray-300 */
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #1f2937; } /* gray-800 */
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; } /* gray-600 */
+        ::-webkit-scrollbar-thumb:hover { background: #6b7280; } /* gray-500 */
+        
+        /* Estilo da Tabela Principal */
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        th, td {
+            border-bottom: 1px solid #374151; /* gray-700 */
+            padding: 10px 12px;
+            white-space: nowrap; 
+        }
+        th {
+            background-color: #1f2937; /* gray-800 */
+            color: #9ca3af; /* gray-400 */
+            text-align: left;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+        }
+
+        /* --- Estilos para Tabela Expansível --- */
+        .main-row {
+            cursor: pointer;
+        }
+        .main-row:hover {
+            background-color: #374151; /* bg-gray-700 */
+        }
+        tr:nth-child(even) {
+             background-color: #1f2937; /* gray-800 */
+        }
+        .main-row:nth-child(even):hover {
+            background-color: #374151;
+        }
+        .details-row.hidden {
+            display: none;
+        }
+        .details-row td {
+            padding: 0 !important; /* Remove padding da linha de detalhes */
+            border-top: 0;
+            border-bottom: 1px solid #374151;
+        }
+        .details-table th, .details-table td {
+            background-color: transparent !important;
+            border-bottom: 1px solid #4b5563; /* gray-600 */
+            border-top: 0;
+            white-space: normal; /* Permite quebra de linha nos detalhes */
+        }
+        .details-table tr:last-child td {
+            border-bottom: 0;
+        }
+        .toggle-btn {
+            cursor: pointer;
+            font-family: monospace;
+            font-weight: bold;
+            font-size: 1.25rem; /* 20px */
+            padding: 0 0.5rem; /* 0 8px */
+            border-radius: 9999px; /* rounded-full */
+            width: 28px;
+            height: 28px;
+            text-align: center;
+            line-height: 24px; /* Ajuste para centralizar o + */
+            transition: background-color 0.2s, transform 0.2s;
+            pointer-events: none; /* O clique é na linha */
+        }
+        /* --- Fim dos Estilos para Tabela Expansível --- */
+
+        /* --- Estilos das Abas (Tabs) --- */
+        .tab-button {
+            transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+        }
+        .tab-button.active {
+            color: #60a5fa; /* text-blue-400 */
+            border-color: #60a5fa; /* border-blue-400 */
+            background-color: #1f2937; /* bg-gray-800 */
+        }
+        .tab-button.inactive {
+            color: #9ca3af; /* text-gray-400 */
+            border-color: transparent;
+        }
+        .tab-panel.hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body class="antialiased p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <h1 class="text-3xl font-bold text-white mb-6">Disparosnator</h1>
+        <p class="text-lg text-gray-400 mb-8">Filtro: Mostrar apenas interações com TMIC > 00:00:01, agrupados por agente.</p>
+
+        <div id="uploadSection" class="bg-gray-800 p-6 rounded-lg shadow-lg mb-8">
+            <label for="csvFileInput" class="block text-sm font-medium text-gray-300 mb-2">Carregue o arquivo CSV (relatorio_atendimento_analitico...)</label>
+            <input type="file" id="csvFileInput" accept=".csv" class="block w-full text-sm text-gray-400
+                file:mr-4 file:py-2 file:px-4
+                file:rounded-lg file:border-0
+                file:text-sm file:font-semibold
+                file:bg-blue-600 file:text-white
+                hover:file:bg-blue-700 cursor-pointer"/>
+        </div>
+
+        <div id="resultsContent" class="hidden">
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+                    <h3 class="text-sm font-medium text-gray-400 uppercase tracking-wider">Total de Disparos (no arquivo)</h3>
+                    <p id="kpiTotalArquivo" class="text-4xl font-bold text-gray-300 mt-2">0</p>
+                </div>
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+                    <h3 class="text-sm font-medium text-gray-400 uppercase tracking-wider">Interações (TMIC > 00:00:01)</h3>
+                    <p id="kpiTotal" class="text-4xl font-bold text-blue-400 mt-2">0</p>
+                </div>
+            </div>
+
+            <div class="mb-8 flex justify-end">
+                <button id="exportButton" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg shadow-lg transition-colors">
+                    Exportar Resumo (CSV)
+                </button>
+            </div>
+            
+            <div class="border-b border-gray-700 mb-8">
+                <nav class="flex space-x-4" aria-label="Tabs">
+                    <button id="tab-btn-geral" class="tab-button active py-3 px-4 text-sm font-medium text-center rounded-t-lg border-b-2">
+                        Visão Geral (Tabela)
+                    </button>
+                    <button id="tab-btn-efetividade" class="tab-button inactive py-3 px-4 text-sm font-medium text-center rounded-t-lg border-b-2">
+                        Efetividade (Gráfico)
+                    </button>
+                </nav>
+            </div>
+
+            <div id="panel-geral" class="tab-panel">
+                
+                <p id="noResultsMessage" class="text-gray-400 text-lg hidden">Nenhuma interação encontrada com TMIC > 00:00:01.</p>
+                
+                <div id="tableWrapper" class="overflow-x-auto bg-gray-900 rounded-lg shadow-lg">
+                    <table class="min-w-full">
+                        <thead id="tableHead">
+                            <tr>
+                                <th class="p-3 text-sm font-semibold uppercase text-gray-400">Agente</th>
+                                <th class="p-3 text-sm font-semibold uppercase text-gray-400 text-center">Total de Disparos</th>
+                                <th class="p-3 text-sm font-semibold uppercase text-gray-400 text-center">Interações (TMIC > 00:01)</th>
+                                <th class="p-3 text-sm font-semibold uppercase text-gray-400 text-center">Ver Detalhes</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="panel-efetividade" class="tab-panel hidden">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                    <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+                        <h3 class="text-sm font-medium text-gray-400 uppercase tracking-wider">Agente Mais Efetivo</h3>
+                        <p id="kpiMaisEfetivo" class="text-4xl font-bold text-green-400 mt-2">N/A</p>
+                    </div>
+                    <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+                        <h3 class="text-sm font-medium text-gray-400 uppercase tracking-wider">Taxa Média de Efetividade</h3>
+                        <p id="kpiMediaEfetividade" class="text-4xl font-bold text-gray-300 mt-2">0%</p>
+                    </div>
+                </div>
+
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+                    <h3 class="text-xl font-semibold text-white mb-4">Taxa de Efetividade por Agente (%)</h3>
+                    <div class="h-96">
+                        <canvas id="efetividadeChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // --- Referências do DOM ---
+        const csvFileInput = document.getElementById('csvFileInput');
+        const resultsContent = document.getElementById('resultsContent');
+        const kpiTotal = document.getElementById('kpiTotal');
+        const kpiTotalArquivo = document.getElementById('kpiTotalArquivo');
+        const tableBody = document.getElementById('tableBody');
+        const noResultsMessage = document.getElementById('noResultsMessage');
+
+        // --- Referências das Abas e Gráfico ---
+        const tabBtnGeral = document.getElementById('tab-btn-geral');
+        const tabBtnEfetividade = document.getElementById('tab-btn-efetividade');
+        const panelGeral = document.getElementById('panel-geral');
+        const panelEfetividade = document.getElementById('panel-efetividade');
+        
+        const kpiMaisEfetivo = document.getElementById('kpiMaisEfetivo');
+        const kpiMediaEfetividade = document.getElementById('kpiMediaEfetividade');
+        const efetividadeChartCtx = document.getElementById('efetividadeChart').getContext('2d');
+
+        // --- MUDANÇA (NOVO): Referência do Botão de Exportar ---
+        const exportButton = document.getElementById('exportButton');
+        
+        let efetividadeChart = null; // Instância global do gráfico
+        let allAgentData = {}; // Cache dos dados processados
+
+        // --- Event Listener para o Upload ---
+        csvFileInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) {
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.readAsText(file, 'ISO-8859-1'); // ou 'UTF-8'
+
+            reader.onload = (e) => {
+                const fileContent = e.target.result;
+                processCSV(fileContent);
+            };
+
+            reader.onerror = () => {
+                alert('Erro ao ler o arquivo.');
+            };
+        });
+
+        /**
+         * Processa o conteúdo do CSV, filtra e renderiza os resultados
+         */
+        function processCSV(fileContent) {
+            const lines = fileContent.split('\n');
+            if (lines.length === 0) {
+                alert('Arquivo vazio.');
+                return;
+            }
+
+            const headers = lines[0].split(';').map(h => h.trim().replace(/"/g, ''));
+            
+            const tmicIndex = headers.findIndex(h => h.toLowerCase() === 'tmic');
+            const agenteIndex = headers.findIndex(h => h.toLowerCase() === 'agente');
+            const protocoloIndex = headers.findIndex(h => h.toLowerCase() === 'protocolo');
+            const contatoIndex = headers.findIndex(h => h.toLowerCase() === 'contato');
+            const dataIndex = headers.findIndex(h => h.toLowerCase() === 'data de entrada');
+
+            const requiredIndices = { tmicIndex, agenteIndex, protocoloIndex, contatoIndex, dataIndex };
+            const missingCol = Object.keys(requiredIndices).find(key => requiredIndices[key] === -1);
+
+            if (missingCol) {
+                const colNameMap = {
+                    tmicIndex: "TMIC",
+                    agenteIndex: "Agente",
+                    protocoloIndex: "Protocolo",
+                    contatoIndex: "Contato",
+                    dataIndex: "Data de Entrada"
+                };
+                alert(`Erro: A coluna "${colNameMap[missingCol]}" não foi encontrada no arquivo.`);
+                return;
+            }
+
+            const agentData = {};
+            let totalLinhasProcessadas = 0;
+
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (line === '') continue;
+
+                const values = line.split(new RegExp(`;(?=(?:(?:[^"]*"){2})*[^"]*$)`));
+
+                if (values.length < headers.length) {
+                    console.warn('Linha mal formatada, pulando:', line);
+                    continue;
+                }
+
+                totalLinhasProcessadas++;
+                
+                const clean = (index) => values[index] ? values[index].trim().replace(/^"|"$/g, '') : '';
+                const tmicValue = clean(tmicIndex) || '00:00:00';
+                const agente = clean(agenteIndex) || "Sem Agente";
+
+                if (!agentData[agente]) {
+                    agentData[agente] = {
+                        totalDisparos: 0,
+                        interacoes: [] 
+                    };
+                }
+
+                agentData[agente].totalDisparos++;
+
+                if (tmicValue > '00:00:01') {
+                    agentData[agente].interacoes.push({
+                        protocolo: clean(protocoloIndex),
+                        contato: clean(contatoIndex),
+                        dataEntrada: clean(dataIndex)
+                    });
+                }
+            }
+            
+            allAgentData = agentData; // Salva no cache
+            
+            // Renderiza os resultados em ambas as abas
+            renderVisaoGeral(allAgentData, totalLinhasProcessadas);
+            renderEfetividade(allAgentData);
+            
+            // Mostra a seção de resultados
+            resultsContent.classList.remove('hidden');
+        }
+
+        /**
+         * Renderiza a Aba de Visão Geral (KPIs e Tabela)
+         */
+        function renderVisaoGeral(agentData, totalLinhasProcessadas) { 
+            kpiTotalArquivo.textContent = totalLinhasProcessadas;
+
+            const totalInteracoes = Object.values(agentData).reduce((acc, data) => acc + data.interacoes.length, 0);
+            
+            kpiTotal.textContent = totalInteracoes;
+            tableBody.innerHTML = '';
+
+            if (totalInteracoes === 0 && Object.keys(agentData).length === 0) { 
+                noResultsMessage.classList.remove('hidden');
+            } else {
+                noResultsMessage.classList.add('hidden');
+
+                const agentesOrdenados = Object.keys(agentData).sort();
+
+                agentesOrdenados.forEach(agente => {
+                    const data = agentData[agente];
+                    const qtdTotalDisparos = data.totalDisparos;
+                    const qtdInteracoes = data.interacoes.length;
+                    const agenteId = agente.replace(/[\s\W]/g, '-'); 
+
+                    const buttonHtml = (qtdInteracoes > 0)
+                        ? `<button class="toggle-btn bg-blue-600 hover:bg-blue-700 text-white" data-target="#details-${agenteId}">+</button>`
+                        : `<span class="text-xs text-gray-600">N/A</span>`; 
+
+                    const mainRow = document.createElement('tr');
+                    mainRow.className = "main-row";
+                    mainRow.innerHTML = `
+                        <td class="p-3 text-sm text-gray-100 font-semibold">${agente}</td>
+                        <td class="p-3 text-sm text-gray-300 text-center font-bold">${qtdTotalDisparos}</td>
+                        <td class="p-3 text-sm text-center font-bold ${qtdInteracoes > 0 ? 'text-yellow-400' : 'text-gray-500'}">${qtdInteracoes}</td>
+                        <td class="p-3 text-sm text-center">
+                            ${buttonHtml}
+                        </td>
+                    `;
+
+                    if (qtdInteracoes > 0) {
+                        const detailsRow = document.createElement('tr');
+                        detailsRow.id = `details-${agenteId}`;
+                        detailsRow.className = "details-row hidden"; 
+
+                        const detailsHtml = `
+                            <td colspan="4"> 
+                                <div class="p-4 bg-gray-700">
+                                    <h4 class="text-sm font-semibold text-gray-200 mb-2">Detalhes das Interações de ${agente}:</h4>
+                                    <table class="w-full details-table">
+                                        <thead class="border-b border-gray-600">
+                                            <tr>
+                                                <th class="p-2 text-xs font-semibold uppercase text-gray-400 text-left">Protocolo</th>
+                                                <th class="p-2 text-xs font-semibold uppercase text-gray-400 text-left">Cliente (Contato)</th>
+                                                <th class="p-2 text-xs font-semibold uppercase text-gray-400 text-left">Data/Hora</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${data.interacoes.map(atd => `
+                                                <tr class="border-t border-gray-600">
+                                                    <td class="p-2 text-sm text-gray-300">${atd.protocolo}</td>
+                                                    <td class="p-2 text-sm text-gray-300">${atd.contato}</td>
+                                                    <td class="p-2 text-sm text-gray-300">${atd.dataEntrada}</td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </td>
+                        `;
+                        detailsRow.innerHTML = detailsHtml;
+                        tableBody.appendChild(mainRow);
+                        tableBody.appendChild(detailsRow);
+                    
+                    } else {
+                        tableBody.appendChild(mainRow);
+                    }
+                });
+            }
+        }
+        
+        /**
+         * Renderiza a Aba de Efetividade (Gráfico)
+         */
+        function renderEfetividade(agentData) {
+            if (efetividadeChart) {
+                efetividadeChart.destroy(); // Limpa o gráfico anterior
+            }
+
+            const dadosEfetividade = Object.keys(agentData).map(agente => {
+                const data = agentData[agente];
+                const interacoes = data.interacoes.length;
+                const totalDisparos = data.totalDisparos;
+                const efetividade = (totalDisparos > 0) ? (interacoes / totalDisparos) * 100 : 0;
+                
+                return {
+                    agente: agente,
+                    efetividade: efetividade,
+                    interacoes: interacoes,
+                    totalDisparos: totalDisparos
+                };
+            });
+
+            dadosEfetividade.sort((a, b) => b.efetividade - a.efetividade);
+
+            if (dadosEfetividade.length > 0) {
+                const maisEfetivo = dadosEfetividade[0];
+                kpiMaisEfetivo.textContent = `${maisEfetivo.agente} (${maisEfetivo.efetividade.toFixed(1)}%)`;
+
+                const totalEfetividade = dadosEfetividade.reduce((acc, curr) => acc + curr.efetividade, 0);
+                const mediaEfetividade = totalEfetividade / dadosEfetividade.length;
+                kpiMediaEfetividade.textContent = `${mediaEfetividade.toFixed(1)}%`;
+            } else {
+                kpiMaisEfetivo.textContent = "N/A";
+                kpiMediaEfetividade.textContent = "0%";
+            }
+
+            const labels = dadosEfetividade.map(d => d.agente);
+            const data = dadosEfetividade.map(d => d.efetividade.toFixed(1)); 
+
+            efetividadeChart = new Chart(efetividadeChartCtx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Taxa de Efetividade (%)',
+                        data: data,
+                        backgroundColor: 'rgba(59, 130, 246, 0.7)', // bg-blue-600
+                        borderColor: 'rgba(59, 130, 246, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { 
+                                color: '#d1d5db',
+                                callback: function(value) {
+                                    return value + '%';
+                                }
+                            },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                        },
+                        x: {
+                            ticks: { color: '#d1d5db' },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        label += context.parsed.y + '%';
+                                    }
+                                    const dadosAgente = dadosEfetividade[context.dataIndex];
+                                    const extra = ` (${dadosAgente.interacoes} / ${dadosAgente.totalDisparos} disparos)`;
+                                    label += extra;
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        /**
+         * MUDANÇA (NOVO): Exporta os dados analisados para CSV
+         */
+        function exportDataToCSV() {
+            if (Object.keys(allAgentData).length === 0) {
+                alert("Nenhum dado para exportar. Por favor, carregue um arquivo primeiro.");
+                return;
+            }
+
+            // Cabeçalhos (usando ; como delimitador)
+            let csvContent = "Agente;Total de Disparos;Interações (TMIC > 00:01);Taxa de Efetividade (%)\r\n";
+
+            const agentesOrdenados = Object.keys(allAgentData).sort();
+
+            agentesOrdenados.forEach(agente => {
+                const data = allAgentData[agente];
+                const totalDisparos = data.totalDisparos;
+                const interacoes = data.interacoes.length;
+                const efetividadeNum = (totalDisparos > 0) ? (interacoes / totalDisparos) * 100 : 0;
+                // Formata para o padrão BR (vírgula decimal)
+                const efetividadeStr = efetividadeNum.toFixed(1).replace('.', ','); 
+
+                // Coloca o agente entre aspas para evitar problemas com nomes que contenham vírgula
+                const linha = `"${agente}";${totalDisparos};${interacoes};"${efetividadeStr}%"`;
+                csvContent += linha + "\r\n";
+            });
+
+            // Adiciona BOM \uFEFF para Excel abrir CSV UTF-8 corretamente
+            const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", "resumo_disparosnator.csv");
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+
+        // --- Event Listener para expandir/recolher ---
+        tableBody.addEventListener('click', (e) => {
+            const targetRow = e.target.closest('.main-row');
+            if (targetRow) {
+                const targetButton = targetRow.querySelector('.toggle-btn');
+                if (!targetButton) return;
+
+                const targetId = targetButton.dataset.target;
+                const detailsRow = document.querySelector(targetId); 
+                
+                if (detailsRow) {
+                    detailsRow.classList.toggle('hidden');
+                    targetButton.textContent = detailsRow.classList.contains('hidden') ? '+' : '−';
+                }
+            }
+        });
+
+        // --- Event Listeners das Abas ---
+        function switchTab(target) {
+            // Target é 'geral' or 'efetividade'
+            if (target === 'geral') {
+                tabBtnGeral.classList.add('active');
+                tabBtnGeral.classList.remove('inactive');
+                tabBtnEfetividade.classList.add('inactive');
+                tabBtnEfetividade.classList.remove('active');
+
+                panelGeral.classList.remove('hidden');
+                panelEfetividade.classList.add('hidden');
+            } else {
+                tabBtnEfetividade.classList.add('active');
+                tabBtnEfetividade.classList.remove('inactive');
+                tabBtnGeral.classList.add('inactive');
+                tabBtnGeral.classList.remove('active');
+
+                panelEfetividade.classList.remove('hidden');
+                panelGeral.classList.add('hidden');
+                
+                if (Object.keys(allAgentData).length > 0) {
+                   renderEfetividade(allAgentData);
+                }
+            }
+        }
+        
+        tabBtnGeral.addEventListener('click', () => switchTab('geral'));
+        tabBtnEfetividade.addEventListener('click', () => switchTab('efetividade'));
+
+        // --- MUDANÇA (NOVO): Event Listener do Botão de Exportar ---
+        exportButton.addEventListener('click', exportDataToCSV);
+
+    </script>
+
+</body>
+</html>
